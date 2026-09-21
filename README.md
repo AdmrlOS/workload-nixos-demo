@@ -62,7 +62,8 @@ does not infer success from a mounted library or a running web page.
 then performs initialization, enumeration, context creation, PTX JIT, allocation,
 host/device copies, kernel launch, synchronization and verification of **65,539**
 2D point transforms. Every coordinate is compared with a CPU reference (absolute
-tolerance `1e-4`), and cleanup completes before PASS. It tests device index 0,
+tolerance `1e-4`); output buffers are poisoned with NaNs before launch to reject
+unwritten or stale results, and cleanup completes before PASS. It tests device index 0,
 appropriate to this single-GPU Orin target. Every failed stage returns nonzero.
 There is **no CPU fallback for the GPU test**.
 

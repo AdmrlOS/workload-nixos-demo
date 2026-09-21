@@ -124,6 +124,11 @@ def probe():
         h2d = api("cuMemcpyHtoD_v2", [C.c_uint64, C.c_void_p, C.c_size_t])
         check("copy_x_to_device", h2d(allocations[0], xs, size))
         check("copy_y_to_device", h2d(allocations[1], ys, size))
+        # Poison both outputs with NaNs so unwritten/stale device memory cannot
+        # pass this deterministic test on a later invocation.
+        fill = api("cuMemsetD32_v2", [C.c_uint64, C.c_uint, C.c_size_t])
+        check("poison_output_x", fill(allocations[2], 0x7FC00000, n))
+        check("poison_output_y", fill(allocations[3], 0x7FC00000, n))
         values = allocations + [C.c_float(math.cos(.7)), C.c_float(math.sin(.7)), C.c_float(2.5), C.c_float(-1.25), C.c_uint(n)]
         params = (C.c_void_p * len(values))(*(C.cast(C.byref(v), C.c_void_p) for v in values))
         launch = api("cuLaunchKernel", [C.c_void_p] + [C.c_uint] * 7 + [C.c_void_p, C.POINTER(C.c_void_p), C.c_void_p])
