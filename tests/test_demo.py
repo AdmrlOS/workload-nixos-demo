@@ -1,0 +1,30 @@
+import importlib.util
+import math
+from pathlib import Path
+import unittest
+
+spec = importlib.util.spec_from_file_location("demo_server", Path(__file__).parents[1] / "demo/server.py")
+server = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(server)
+
+
+class DemoTests(unittest.TestCase):
+    def test_patrol_stays_inside_arena_and_lidar_hits_walls(self):
+        for t in range(200):
+            scene = server.scene(t)
+            self.assertTrue(scene["simulated"])
+            self.assertTrue(0 < scene["x"] < 12 and 0 < scene["y"] < 8)
+            self.assertTrue(math.isfinite(scene["heading"]))
+            self.assertEqual(len(scene["points"]), 144)
+            for x, y in scene["points"]:
+                self.assertTrue(0 <= x <= 12 and 0 <= y <= 8)
+                self.assertTrue(x in (0, 12) or y in (0, 8))
+
+    def test_gpu_is_pending_until_real_probe_runs(self):
+        status = server.status()
+        self.assertEqual(status["gpu"]["result"], "PENDING")
+        self.assertTrue(status["simulation"])
+
+
+if __name__ == "__main__":
+    unittest.main()
