@@ -11,9 +11,9 @@ Do not describe an untested image as board-validated.
 
 **1. Show the dashboard.** “This is a complete NixOS userspace built from a locked
 flake. Admiral boots the device and deploys it as an OCI artifact.” The on-device
-**Qwen2.5-0.5B-Instruct** chat interface demonstrates edge AI inference directly on
+**MiniCPM5-2B** chat interface demonstrates edge AI inference directly on
 Jetson Orin with the official Admiral theming, accelerated via the injected CUDA
-Driver API. CPU fallback is strictly disabled to guarantee genuine GPU execution.
+driver through llama.cpp. CPU fallback is strictly disabled to guarantee genuine GPU execution.
 
 **2. Show real GPU execution.** The independent GPU panel runs a coordinate
 transform on 65,539 synthetic points and compares every output with a CPU
@@ -32,7 +32,7 @@ timeout 30 demo-gpu
 nix --version
 cat /etc/admiral-demo/flake.lock
 nix shell --offline nixpkgs#hello -c hello
-systemctl status robotics-demo --no-pager
+systemctl status robotics-demo minicpm --no-pager
 cat /etc/admiral-demo/source/nix/configuration.nix
 ```
 
@@ -59,6 +59,9 @@ GPU execution. Capture the following from the portal-deployed image:
 - `/api/status` and `timeout 30 demo-gpu` JSON as `demo`, then as root. Require
   PASS, a real injected driver mapping, context and kernel stages, all points
   checked, and UID/groups matching the command's account.
+- Require `llm.result == "PASS"` and full CUDA layer offload in `/api/status`.
+  Ask an unscripted chat question and follow-up; record token counts and decode
+  speed. Capture `journalctl -u minicpm` and repeat after restarting the service.
 - `/run/admiral/nvidia/manifest.json` and the host readiness evidence through
   the trusted host-management channel. The manifest profile should be
   `tegra234-nvgpu-r39.2.1-v1`; record the exact observed value.

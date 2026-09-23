@@ -771,7 +771,7 @@
       </div>
       <div class="stat-card">
         <div class="stat-label">GPU acceleration</div>
-        <div class="stat-val" id="stat-gpu">Qwen2.5 (sm_87)</div>
+        <div class="stat-val" id="stat-gpu">Checking model…</div>
         <div class="stat-sub" id="stat-gpu-sub">Injected Driver API · No CPU fallback</div>
       </div>
       <div class="stat-card">
@@ -792,30 +792,30 @@
               <div class="terminal-dot dot-yellow"></div>
               <div class="terminal-dot dot-green"></div>
             </div>
-            <h2>admiral-chat --model Qwen2.5-0.5B-Instruct</h2>
+            <h2>admiral-chat --model MiniCPM5-2B</h2>
           </div>
-          <span class="tiny" id="chat-backend-badge">QWEN2.5 · CUDA sm_87</span>
+          <span class="tiny" id="chat-backend-badge">CHECKING MODEL…</span>
         </div>
 
         <div class="chat-messages" id="chat-window">
           <!-- Welcome message -->
           <div class="message assistant">
             <div class="message-bubble">
-              Welcome to the Admiral NixOS edge demonstration. I am <strong>Qwen2.5 (0.5B-Instruct)</strong>, running on-device on this
+              Welcome to the Admiral NixOS edge demonstration. I am <strong>MiniCPM5-2B</strong>, configured for on-device inference on this
               <strong>NVIDIA Jetson Orin</strong> inside an unprivileged NixOS userspace container, accelerated by
-              the platform's injected NVIDIA driver (<code>libcuda.so.1</code>) via the CUDA Driver API.
+              the platform's injected NVIDIA driver (<code>libcuda.so.1</code>) through llama.cpp with CUDA. Check the model status below for readiness.
               <br><br>
-              <strong>Zero CPU Fallback:</strong> All transformer projections, RMSNorms, and SwiGLU activations execute directly on the Orin Ampere GPU. Ask me about Admiral, NixOS packaging, or click one of the suggested prompts below to run an on-device inference!
+              <strong>Zero CPU Fallback:</strong> Chat requires every model layer to be offloaded to CUDA. Tokenization and sampling run on the CPU. Ask me about Admiral, NixOS packaging, or click one of the suggested prompts below to run an on-device inference!
             </div>
             <div class="message-meta">
-              <span>Qwen2.5 Edge Assistant</span>
-              <span class="telemetry-tag">Ready</span>
+              <span>MiniCPM5-2B Edge Assistant</span>
+              <span class="telemetry-tag">Readiness checked live</span>
             </div>
           </div>
         </div>
 
         <div class="prompt-suggestions">
-          <button class="prompt-chip" data-prompt="⚡ Run CUDA inference benchmark">⚡ Run CUDA benchmark</button>
+          <button class="prompt-chip" data-prompt="Explain why CUDA helps language model inference on Jetson.">⚡ Explain CUDA inference</button>
           <button class="prompt-chip" data-prompt="🚢 What is Admiral?">🚢 What is Admiral?</button>
           <button class="prompt-chip" data-prompt="🤖 What LLM are you using?">🤖 What LLM is this?</button>
           <button class="prompt-chip" data-prompt="❄️ How does NixOS run on Jetson Orin?">❄️ NixOS on Jetson</button>
@@ -894,7 +894,7 @@
               <span>WAIT</span>
             </div>
             <div class="step" id="step-launch">
-              <span>03 / Launch GPU Tensor Operations</span>
+              <span>03 / Launch Coordinate Transform</span>
               <span>WAIT</span>
             </div>
             <div class="step" id="step-verify">
@@ -966,6 +966,7 @@ systemctl status robotics-demo</div>
     const chatInput = $('chat-input');
     const sendBtn = $('send-btn');
     let isGenerating = false;
+    let history = [];
 
     // Append a message to the chat container
     function appendMessage(role, text, meta) {
@@ -1023,7 +1024,7 @@ systemctl status robotics-demo</div>
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: promptText })
+          body: JSON.stringify({ prompt: promptText, history })
         });
 
         if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -1033,12 +1034,12 @@ systemctl status robotics-demo</div>
           assistantBubble.innerHTML = `
             <div style="color:var(--amber);background:rgba(255,189,46,0.08);border:1px solid rgba(255,189,46,0.3);padding:12px 14px;border-radius:8px;">
               <strong>⚠️ CUDA Acceleration Required (No CPU Fallback)</strong><br>
-              ${data.error || 'NVIDIA driver (libcuda.so.1) not detected on host.'}
+              ${formatMarkdown(data.error || 'Model service unavailable.')}
             </div>
           `;
           const metaDiv = assistantBubble.parentElement.querySelector('.message-meta');
           if (metaDiv) {
-            metaDiv.innerHTML = `<span>Qwen2.5</span> <span class="telemetry-tag" style="color:var(--amber);background:rgba(255,189,46,0.15)">CUDA Required</span>`;
+            metaDiv.innerHTML = `<span>MiniCPM5-2B</span> <span class="telemetry-tag" style="color:var(--amber);background:rgba(255,189,46,0.15)">CUDA Required</span>`;
           }
           isGenerating = false;
           sendBtn.disabled = false;
@@ -1048,31 +1049,21 @@ systemctl status robotics-demo</div>
           return;
         }
 
-        // Stream typing animation
-        assistantBubble.innerHTML = '';
         const fullText = data.text || 'No response generated.';
-        let i = 0;
-        const speed = 12; // ms per char
-        const timer = setInterval(() => {
-          i += 3;
-          if (i >= fullText.length) {
-            clearInterval(timer);
-            assistantBubble.innerHTML = formatMarkdown(fullText);
-            isGenerating = false;
-            sendBtn.disabled = false;
-            chatInput.disabled = false;
-            chatInput.focus();
-            chatWindow.scrollTop = chatWindow.scrollHeight;
-          } else {
-            assistantBubble.innerHTML = formatMarkdown(fullText.substring(0, i)) + ' ▍';
-            chatWindow.scrollTop = chatWindow.scrollHeight;
-          }
-        }, speed);
+        assistantBubble.innerHTML = formatMarkdown(fullText);
+        history.push({role: 'user', content: promptText}, {role: 'assistant', content: fullText});
+        history = history.slice(-12);
+        while (history.length && history.reduce((n, m) => n + m.content.length, 0) > 8000) history.splice(0, 2);
+        isGenerating = false;
+        sendBtn.disabled = false;
+        chatInput.disabled = false;
+        chatInput.focus();
+        chatWindow.scrollTop = chatWindow.scrollHeight;
 
         // Update telemetry tag in meta
         const metaDiv = assistantBubble.parentElement.querySelector('.message-meta');
         if (metaDiv && data.tok_per_sec) {
-          metaDiv.innerHTML = `<span>Qwen2.5</span> <span class="telemetry-tag">⚡ ${data.tok_per_sec} tok/s · ${data.tokens} tokens · ${data.latency_ms} ms (CUDA)</span>`;
+          metaDiv.innerHTML = `<span>MiniCPM5-2B</span> <span class="telemetry-tag">⚡ ${data.tok_per_sec} tok/s · ${data.tokens} tokens · ${data.latency_ms} ms (CUDA)</span>`;
         }
 
         // Update metric tiles
@@ -1081,7 +1072,7 @@ systemctl status robotics-demo</div>
         if (data.total_tokens_all_time) $('metric-tokens').textContent = data.total_tokens_all_time.toLocaleString();
 
       } catch (err) {
-        assistantBubble.innerHTML = `<span style="color:var(--red);">Error connecting to edge LLM: ${err.message}</span>`;
+        assistantBubble.innerHTML = `<span style="color:var(--red);">Error connecting to edge LLM: ${formatMarkdown(err.message)}</span>`;
         isGenerating = false;
         sendBtn.disabled = false;
         chatInput.disabled = false;
@@ -1096,6 +1087,8 @@ systemctl status robotics-demo</div>
     };
 
     $('clear-btn').onclick = () => {
+      if (isGenerating) return;
+      history = [];
       chatWindow.innerHTML = '';
       appendMessage('assistant', 'Chat history cleared. How can I assist you with Admiral or NixOS on Jetson Orin?');
     };
@@ -1157,12 +1150,12 @@ systemctl status robotics-demo</div>
         $('gpu-result-badge').textContent = isFresh ? g.result : 'STALE';
         $('gpu-result-badge').style.color = gpuPass ? 'var(--mint)' : 'var(--amber)';
 
-        $('stat-gpu').textContent = gpuPass ? 'Qwen2.5 (sm_87)' : 'No CUDA Driver';
-        $('stat-gpu').style.color = gpuPass ? 'var(--mint)' : 'var(--amber)';
-        $('stat-gpu-sub').textContent = gpuPass ? 'CUDA Driver API · Verified GPU' : 'No CPU fallback (GPU Required)';
+        $('stat-gpu').textContent = llmPass ? 'MiniCPM5-2B · CUDA' : 'Model unavailable';
+        $('stat-gpu').style.color = llmPass ? 'var(--mint)' : 'var(--amber)';
+        $('stat-gpu-sub').textContent = llmPass ? `llama.cpp · ${llm.gpu_layers}/${llm.total_layers} layers on CUDA` : (llm.error || 'Loading model…');
 
-        $('chat-backend-badge').textContent = gpuPass ? 'QWEN2.5 · CUDA sm_87' : 'CUDA REQUIRED · NO CPU FALLBACK';
-        $('chat-backend-badge').style.color = gpuPass ? 'var(--mint)' : 'var(--amber)';
+        $('chat-backend-badge').textContent = llmPass ? 'MINICPM5-2B · CUDA sm_87' : 'CUDA REQUIRED · NO CPU FALLBACK';
+        $('chat-backend-badge').style.color = llmPass ? 'var(--mint)' : 'var(--amber)';
 
         $('gpu-device-name').textContent = g.device || (g.result === 'FAIL' ? 'No NVIDIA hardware detected (Docker/Host)' : 'Detecting…');
         if (g.compute_capability) $('gpu-compute-cap').textContent = `Compute ${g.compute_capability} (Ampere)`;

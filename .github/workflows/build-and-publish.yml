@@ -40,7 +40,7 @@ jobs:
   build-and-publish:
     name: Build & Publish NixOS Container Image
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -69,7 +69,7 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           IMAGE_REPO="ghcr.io/$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
-          DEFAULT_TAG="2026-09-21-nixos26.05-orin-r1"
+          DEFAULT_TAG="2026-09-23-nixos26.05-minicpm5-r2"
 
           TAGS=()
           TAGS+=("${IMAGE_REPO}:${DEFAULT_TAG}")

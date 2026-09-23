@@ -8,7 +8,7 @@ BSP-owned NVIDIA driver.
 
 - **Source:** `https://github.com/AdmrlOS/workload-nixos-demo`
 - **Container Registry (GHCR):** `ghcr.io/admrlos/workload-nixos-demo:latest`
-- **Release tag:** `ghcr.io/admrlos/workload-nixos-demo:2026-09-21-nixos26.05-orin-r1`
+- **Release tag:** `ghcr.io/admrlos/workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r2`
 - See [PUBLISHED.md](PUBLISHED.md) for immutable digests and validation details.
 
 ---
@@ -56,12 +56,11 @@ No kernel re-compilation, no JetPack hacking, and zero driver blobs inside your 
 
 ## What to show on the call
 
-1. Open `http://DEVICE_IP:8080`. Interact with the on-device **Qwen2.5-0.5B-Instruct**
+1. Open `http://DEVICE_IP:8080`. Interact with the on-device **MiniCPM5-2B**
    model via the chat interface styled with Admiral's theme (admrl.co). It runs
-   on-device inference using the CUDA Driver API on the Jetson Orin with a custom
-   ChatML system prompt describing Admiral. CPU fallback is strictly disabled: all
-   tensor operations require the Jetson Orin Ampere GPU, reporting honest failure
-   when CUDA is unavailable. The right-hand panel reports real-time inference
+   real model inference using llama.cpp and CUDA on Jetson Orin, with an Admiral
+   system prompt. All model layers must be offloaded to CUDA; tokenization and
+   sampling use the CPU. Missing CUDA or model failures are reported honestly. The right-hand panel reports real-time inference
    telemetry and an independent GPU coordinate-transform test.
 2. `ssh demo@DEVICE_IP` using the private key matching `alexanderturner`'s GitHub
    public key, then run `demo-status`, `demo-chat "What is Admiral OS?"`, and
@@ -106,6 +105,38 @@ do not normally search Debian-style library locations.
 Readiness and driver integrity remain Admiral init's responsibility. The image
 does not infer success from a mounted library or a running web page.
 
+## MiniCPM5-2B inference
+
+`minicpm.service` runs the flake-pinned llama.cpp b9190 with CUDA 12.6,
+compiled for Orin (`sm_87`). The official Q4_K_M GGUF (1.56 GB) is fetched
+at revision `2079a22f3beaa4e306449978533478fe0522f4b3` and SHA-256 verified
+by Nix, then included in the image. No model download is needed on the device.
+See [OpenBMB's deployment guide](https://github.com/OpenBMB/MiniCPM/blob/main/docs/deployment/llama_cpp.md).
+
+The server binds only `127.0.0.1:8081`, explicitly selects `CUDA0`, disables
+memory auto-fitting and requests all layers on GPU. The supervisor records full
+offload and a CUDA model buffer; `/api/status` also checks server health before
+reporting model readiness. Driver availability or the independent probe alone
+cannot make the LLM status PASS. Missing/incompatible CUDA fails without a CPU
+fallback. CUDA 12.6 runtime compatibility with the deployed BSP must be checked
+on the target; allow space for model, runtime, KV cache and the larger OCI image.
+
+The existing browser and `demo-chat` use the same local model service. The web
+chat retains up to six turns, validates history, sends the server-owned Admiral
+system prompt, and displays the actual generated answer without a typing delay.
+Generation uses the GGUF chat template, an 8192-token context and up to 512 output
+tokens. Oversized conversations fail explicitly; Clear starts a fresh chat.
+Token counts and decode speed come from llama.cpp; latency is measured wall time.
+There are no scripted answers, artificial compute loops or fabricated timings.
+
+Inspect `journalctl -u minicpm -f` and `systemctl status minicpm robotics-demo`.
+On Jetson, require `llm.result == "PASS"`, equal nonzero `gpu_layers` and
+`total_layers`, and a successful `/api/chat` answer with real token usage. Ask
+an unscripted question and a follow-up to confirm generation and context. Restart
+`minicpm` and verify chat becomes unavailable until the model is ready again.
+The separate coordinate probe must also pass. Local tests mock the inference
+server and cannot establish Jetson performance or hardware acceptance.
+
 ## GPU check
 
 `demo-gpu` loads `libcuda.so.1`, reports its actual process mappings and profile,
@@ -118,9 +149,9 @@ appropriate to this single-GPU Orin target. Every failed stage returns nonzero.
 There is **no CPU fallback for the GPU test**.
 
 This small Python/ctypes application uses the **CUDA Driver API** and embedded
-PTX 7.0 targeting `sm_80`, JIT-compiled by Orin's injected driver. It intentionally
-does not include `libcudart`, nvcc, driver stubs, TensorRT, ROS, PyTorch, display or
-multimedia components. It is not acceptance of a customer's CUDA Runtime API or
+PTX 7.0 targeting `sm_80`, JIT-compiled by Orin's injected driver. The probe itself needs no CUDA toolkit. The LLM service additionally ships
+Nix-packaged CUDA runtime and cuBLAS libraries; nvcc is a build dependency.
+The host NVIDIA driver is still supplied by Admiral. It is not acceptance of a customer's CUDA Runtime API or
 framework stack. The pipeline's measured duration includes setup, JIT, transfers
 and CPU verification and must not be presented as a GPU performance benchmark.
 
@@ -169,8 +200,8 @@ On a native ARM64 Linux Nix builder:
 ```sh
 nix build .#image -L
 docker load -i result
-docker tag workload-nixos-demo:2026-09-21-nixos26.05-orin-r1 \
-  ghcr.io/admrlos/workload-nixos-demo:2026-09-21-nixos26.05-orin-r1
+docker tag workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r2 \
+  ghcr.io/admrlos/workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r2
 ```
 
 On Apple Silicon with Docker Desktop, the helper starts a pinned Linux Nix
@@ -179,7 +210,7 @@ builder and keeps downloaded packages in a dedicated named volume:
 ```sh
 bash scripts/build.sh
 bash scripts/test-local.sh
-docker push ghcr.io/admrlos/workload-nixos-demo:2026-09-21-nixos26.05-orin-r1
+docker push ghcr.io/admrlos/workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r2
 docker push ghcr.io/admrlos/workload-nixos-demo:latest
 ```
 

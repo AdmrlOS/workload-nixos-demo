@@ -1,4 +1,4 @@
-"""Admiral NixOS Edge Demo Server: On-Device Qwen2.5 LLM Chat & Checked CUDA Telemetry."""
+"""Admiral NixOS Edge Demo Server: On-Device MiniCPM5-2B LLM Chat & Checked CUDA Telemetry."""
 import json
 import math
 import os
@@ -79,20 +79,7 @@ def status():
         "gpu": gpu,
         "simulation": True,
         "system": os.path.realpath("/run/current-system"),
-        "llm": {
-            "model": GLOBAL_MODEL.MODEL_ID,
-            "cuda_active": GLOBAL_MODEL.cuda.available,
-            "result": "PASS" if GLOBAL_MODEL.cuda.available else "FAIL",
-            "device": GLOBAL_MODEL.cuda.device_name if GLOBAL_MODEL.cuda.available else "None (GPU Required)",
-            "compute_capability": GLOBAL_MODEL.cuda.compute_cap,
-            "backend": "CUDA Driver API (libcuda.so.1 / sm_87)" if GLOBAL_MODEL.cuda.available else "None",
-            "cpu_fallback": False,
-            "system_prompt_configured": True,
-            "total_tokens": GLOBAL_MODEL.total_tokens_generated,
-            "inferences": GLOBAL_MODEL.total_inferences,
-            "last_tok_per_sec": GLOBAL_MODEL.last_tok_per_sec,
-            "last_latency_ms": GLOBAL_MODEL.last_latency_ms,
-        },
+        "llm": GLOBAL_MODEL.status(),
     }
 
 
@@ -142,7 +129,7 @@ class Handler(BaseHTTPRequestHandler):
         elif route == "/api/scene":
             self._send_json(scene(time.monotonic() - START))
         elif route == "/healthz":
-            self._send_json({"dashboard": "ok", "llm": "ready"})
+            self._send_json({"dashboard": "ok", "llm": GLOBAL_MODEL.status()["result"]})
         elif route == "/":
             content = (ROOT / "index.html").read_bytes()
             self.send_response(200)
@@ -169,10 +156,12 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/chat":
             try:
                 length = int(self.headers.get("Content-Length", 0))
+                if not 0 < length <= 65536:
+                    raise ValueError("Request body must contain 1–65536 bytes")
                 raw = self.rfile.read(length)
                 payload = json.loads(raw.decode("utf-8") if raw else "{}")
                 prompt = payload.get("prompt") or payload.get("message") or ""
-                result = GLOBAL_MODEL.generate_safe(prompt)
+                result = GLOBAL_MODEL.generate_safe(prompt, payload.get("history"))
                 self._send_json(result)
             except Exception as e:
                 self._send_json({"result": "FAIL", "error": str(e)}, code=400)
