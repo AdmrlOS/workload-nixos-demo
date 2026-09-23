@@ -13,7 +13,7 @@ ghcr.io/admrlos/workload-nixos-demo:latest
 Immutable deployment reference:
 
 ```text
-alexturner/workload-nixos-demo@sha256:f2b5cbe36a3447d7ef6dc84dc16a7dcbeedc85118a099ff51e69252acdcfb676
+ghcr.io/admrlos/workload-nixos-demo@sha256:f2ab33779c20274858e307c6cf39a457d59f2cb9d2cb936e5b117c8c56eef898
 ```
 
 Platform: `linux/arm64`. Uncompressed image content: 1,663,654,794 bytes.
