@@ -10,13 +10,14 @@ Do not describe an untested image as board-validated.
 ## Five-minute walkthrough
 
 **1. Show the dashboard.** “This is a complete NixOS userspace built from a locked
-flake. Admiral boots the device and deploys it as an OCI artifact.” The simulated
-robot illustrates the application experience. Its movement is synthetic, not a
-physical robot, sensor stream, ROS graph or GPU-driven navigation stack.
+flake. Admiral boots the device and deploys it as an OCI artifact.” The on-device
+LLM chat interface demonstrates edge AI inference directly on Jetson Orin with
+the official Admiral theming, accelerated via the injected CUDA Driver API.
 
 **2. Show real GPU execution.** The independent GPU panel runs a coordinate
 transform on 65,539 synthetic points and compares every output with a CPU
-reference. Describe this as a compatibility smoke test, not a performance result.
+reference, while the on-device LLM executes real tensor operations on the Orin GPU.
+Describe the coordinate transform as a compatibility smoke test, not a performance result.
 
 **3. SSH with the existing key.**
 
@@ -25,6 +26,7 @@ ssh demo@DEVICE_IP
 cat /etc/os-release
 id
 demo-status
+demo-chat "Explain how Admiral manages the Jetson GPU driver"
 timeout 30 demo-gpu
 nix --version
 cat /etc/admiral-demo/flake.lock

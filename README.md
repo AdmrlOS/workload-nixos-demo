@@ -1,9 +1,10 @@
-# NixOS Robotics Lab on Admiral
+# NixOS Edge AI Lab on Admiral
 
 A real ARM64 **NixOS 26.05 system userspace**, built with a pinned Nix flake and
-packaged as an OCI-compatible container image. It boots systemd, runs a robotics
-dashboard, exposes key-only SSH, and executes a real GPU coordinate transform
-through Admiral's BSP-owned NVIDIA driver.
+packaged as an OCI-compatible container image. It boots systemd, runs an on-device
+Edge LLM chat interface with official Admiral theming (admrl.co), exposes key-only SSH,
+and executes real GPU tensor operations and coordinate transforms through Admiral's
+BSP-owned NVIDIA driver.
 
 - **Source:** `https://github.com/AdmrlOS/workload-nixos-demo`
 - **Container Registry (GHCR):** `ghcr.io/admrlos/workload-nixos-demo:latest`
@@ -55,11 +56,14 @@ No kernel re-compilation, no JetPack hacking, and zero driver blobs inside your 
 
 ## What to show on the call
 
-1. Open `http://DEVICE_IP:8080`. The warehouse patrol and lidar are explicitly
-   **simulated on the CPU**. The right-hand panel independently reports an actual
-   GPU coordinate-transform test, including failure when CUDA is unavailable.
+1. Open `http://DEVICE_IP:8080`. Interact with the on-device Small Language Model
+   via the chat interface styled with Admiral's theme (admrl.co). It runs on-device
+   inference using the CUDA Driver API on the Jetson Orin. The right-hand panel
+   reports real-time inference telemetry and an independent GPU coordinate-transform
+   test, including honest failure reporting when CUDA is unavailable.
 2. `ssh demo@DEVICE_IP` using the private key matching `alexanderturner`'s GitHub
-   public key, then run `demo-status` and `timeout 30 demo-gpu`.
+   public key, then run `demo-status`, `demo-chat "What is Admiral OS?"`, and
+   `timeout 30 demo-gpu`.
 3. Show `/etc/os-release`, `nix --version`, `nix registry list`, and
    `systemctl status robotics-demo`.
 4. Show `cat /etc/admiral-demo/flake.lock`, then run

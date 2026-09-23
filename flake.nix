@@ -1,5 +1,5 @@
 {
-  description = "NixOS robotics system-userspace demo for Admiral / Jetson Orin";
+  description = "NixOS edge AI system-userspace demo for Admiral / Jetson Orin";
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
   outputs = { self, nixpkgs }: let
     system = "aarch64-linux";
@@ -34,7 +34,7 @@
           ExposedPorts = { "22/tcp" = {}; "8080/tcp" = {}; };
           StopSignal = "SIGRTMIN+3";
           Labels = {
-            "org.opencontainers.image.title" = "Admiral NixOS Robotics Demo";
+            "org.opencontainers.image.title" = "Admiral NixOS Edge AI Demo";
             "org.opencontainers.image.source" = "https://github.com/admrlos/workload-nixos-demo";
             "org.opencontainers.image.version" = "2026-09-21-nixos26.05-orin-r1";
             "co.admrl.workload" = "nixos-robotics";

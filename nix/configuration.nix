@@ -2,16 +2,20 @@
 let
   app = pkgs.stdenvNoCC.mkDerivation {
     pname = "admiral-robotics-demo";
-    version = "0.1.0";
+    version = "0.2.0";
     src = ../demo;
     nativeBuildInputs = [ pkgs.makeWrapper ];
     installPhase = ''
       mkdir -p $out/share/admiral-demo $out/bin
       cp -r . $out/share/admiral-demo/
       makeWrapper ${pkgs.python3}/bin/python3 $out/bin/demo-server \
-        --add-flags "$out/share/admiral-demo/server.py"
+        --add-flags "$out/share/admiral-demo/server.py" \
+        --prefix LD_LIBRARY_PATH : /run/admiral/nvidia/lib
       makeWrapper ${pkgs.python3}/bin/python3 $out/bin/demo-gpu \
         --add-flags "$out/share/admiral-demo/gpu.py" \
+        --prefix LD_LIBRARY_PATH : /run/admiral/nvidia/lib
+      makeWrapper ${pkgs.python3}/bin/python3 $out/bin/demo-chat \
+        --add-flags "$out/share/admiral-demo/chat.py" \
         --prefix LD_LIBRARY_PATH : /run/admiral/nvidia/lib
     '';
   };
@@ -52,18 +56,19 @@ in {
   environment.etc."admiral-demo/source".source = source;
   environment.etc."motd".text = ''
 
-    ADMIRAL / NIXOS ROBOTICS LAB
+    ADMIRAL / NIXOS EDGE AI LAB
     Dashboard : http://DEVICE_IP:8080
     Inspect   : demo-status
+    Chat CLI  : demo-chat "Your question"
     GPU test  : timeout 30 demo-gpu
     Services  : systemctl status robotics-demo
     Logs      : journalctl -u robotics-demo -f
     Nix       : nix --version; nix registry list
 
-    Robot/lidar animation is simulated. GPU PASS requires checked CUDA output.
+    Edge LLM chat running on Jetson Orin via CUDA Driver API.
   '';
   systemd.services.robotics-demo = {
-    description = "Admiral NixOS robotics dashboard and checked CUDA probe";
+    description = "Admiral NixOS edge LLM chat dashboard and checked CUDA probe";
     wantedBy = [ "multi-user.target" ];
     after = [ "network.target" ];
     environment = {
