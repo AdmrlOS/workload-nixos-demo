@@ -25,7 +25,7 @@ web_port=$(docker port "$name" 8080/tcp | awk -F: '{print $NF}')
 ssh_port=$(docker port "$name" 22/tcp | awk -F: '{print $NF}')
 curl -fsS "http://127.0.0.1:$web_port/" > "$scratch/index.html"
 grep -q 'admiral-chat' "$scratch/index.html"
-grep -q 'admiral-dark.CawzA3qg.svg' "$scratch/index.html"
+grep -q 'admiral-light.DiddamFK.svg' "$scratch/index.html"
 curl -fsS -X POST "http://127.0.0.1:$web_port/api/chat" -H "Content-Type: application/json" -d '{"prompt":"What is Admiral?"}' > "$scratch/chat.json"
 grep -q 'CPU fallback is strictly disabled' "$scratch/chat.json"
 curl -fsS "http://127.0.0.1:$web_port/admiral-logo.svg" > "$scratch/admiral-logo.svg"
