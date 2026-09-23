@@ -1,0 +1,96 @@
+name: Build and Publish OCI Image
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+      - '20*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Custom image tag to publish (leave empty for default)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run unit tests
+        run: python3 -m unittest discover -s tests
+
+  build-and-publish:
+    name: Build & Publish NixOS Container Image
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU for ARM64
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build ARM64 NixOS OCI Image
+        run: |
+          bash scripts/build.sh
+
+      - name: Tag and Push Image to GHCR
+        if: github.event_name != 'pull_request'
+        run: |
+          IMAGE_REPO="ghcr.io/$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          DEFAULT_TAG="2026-09-21-nixos26.05-orin-r1"
+
+          TAGS=()
+          TAGS+=("${IMAGE_REPO}:${DEFAULT_TAG}")
+          TAGS+=("${IMAGE_REPO}:latest")
+
+          SHORT_SHA="$(git rev-parse --short HEAD)"
+          TAGS+=("${IMAGE_REPO}:sha-${SHORT_SHA}")
+
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            REF_TAG="${GITHUB_REF#refs/tags/}"
+            TAGS+=("${IMAGE_REPO}:${REF_TAG}")
+          fi
+
+          if [[ -n "${{ github.event.inputs.tag }}" ]]; then
+            TAGS+=("${IMAGE_REPO}:${{ github.event.inputs.tag }}")
+          fi
+
+          echo "Publishing tags to GHCR:"
+          for t in "${TAGS[@]}"; do
+            echo "  -> Tagging: ${t}"
+            docker tag "workload-nixos-demo:${DEFAULT_TAG}" "${t}"
+            echo "  -> Pushing: ${t}"
+            docker push "${t}"
+          done

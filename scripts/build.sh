@@ -9,11 +9,13 @@ if ! docker inspect "$builder" >/dev/null 2>&1; then
 else
   docker start "$builder" >/dev/null
 fi
+docker exec "$builder" git config --global --add safe.directory '*' || true
 docker exec "$builder" nix --extra-experimental-features 'nix-command flakes' \
   build /work#image --out-link /tmp/admiral-nixos-image -L
 mkdir -p build
 docker cp -L "$builder:/tmp/admiral-nixos-image" build/image.tar.gz
 docker load -i build/image.tar.gz
-image="${IMAGE_REPOSITORY:-alexturner/workload-nixos-demo}:${IMAGE_TAG:-2026-09-21-nixos26.05-orin-r1}"
+image="${IMAGE_REPOSITORY:-ghcr.io/admrlos/workload-nixos-demo}:${IMAGE_TAG:-2026-09-21-nixos26.05-orin-r1}"
 docker tag workload-nixos-demo:2026-09-21-nixos26.05-orin-r1 "$image"
-echo "Built $image"
+docker tag workload-nixos-demo:2026-09-21-nixos26.05-orin-r1 "${IMAGE_REPOSITORY:-ghcr.io/admrlos/workload-nixos-demo}:latest"
+echo "Built $image (and ${IMAGE_REPOSITORY:-ghcr.io/admrlos/workload-nixos-demo}:latest)"

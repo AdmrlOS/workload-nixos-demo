@@ -2,11 +2,12 @@
 
 Release tag: `2026-09-21-nixos26.05-orin-r1` (2026-09-21, Australia/Sydney).
 
-Source repository: https://github.com/AdmrlOS/workload-nixos-demo (private).
-Container repository: https://hub.docker.com/r/alexturner/workload-nixos-demo.
+Source repository: https://github.com/AdmrlOS/workload-nixos-demo (public).
+Container repository: ghcr.io/admrlos/workload-nixos-demo.
 
 ```text
-alexturner/workload-nixos-demo:2026-09-21-nixos26.05-orin-r1
+ghcr.io/admrlos/workload-nixos-demo:2026-09-21-nixos26.05-orin-r1
+ghcr.io/admrlos/workload-nixos-demo:latest
 ```
 
 Immutable deployment reference:

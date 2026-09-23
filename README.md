@@ -1,13 +1,57 @@
 # NixOS Robotics Lab on Admiral
 
 A real ARM64 **NixOS 26.05 system userspace**, built with a pinned Nix flake and
-packaged as an OCI-compatible container image. It boots systemd, runs a small
-robotics dashboard, exposes key-only SSH, and checks a GPU coordinate transform
+packaged as an OCI-compatible container image. It boots systemd, runs a robotics
+dashboard, exposes key-only SSH, and executes a real GPU coordinate transform
 through Admiral's BSP-owned NVIDIA driver.
 
-Source: `github.com/admrlos/workload-nixos-demo`.
-Image: `alexturner/workload-nixos-demo:2026-09-21-nixos26.05-orin-r1`.
-See [PUBLISHED.md](PUBLISHED.md) for the immutable digest and validation results.
+- **Source:** `https://github.com/AdmrlOS/workload-nixos-demo`
+- **Container Registry (GHCR):** `ghcr.io/admrlos/workload-nixos-demo:latest`
+- **Release tag:** `ghcr.io/admrlos/workload-nixos-demo:2026-09-21-nixos26.05-orin-r1`
+- See [PUBLISHED.md](PUBLISHED.md) for immutable digests and validation details.
+
+---
+
+## The Core Demo: Taking Existing NixOS Workloads to Jetson Orin with Admiral
+
+Teams using NixOS for robotics, computer vision, and edge computing love its reproducibility and declarative configuration, but running NixOS natively on **NVIDIA Jetson (Orin / Xavier)** is notoriously difficult:
+- NVIDIA JetPack and Tegra L4T drivers are tightly coupled to specific kernel releases, device trees, out-of-tree kernel modules, and proprietary driver blobs.
+- Packaging CUDA and Jetson BSP drivers directly inside NixOS requires complex custom overlays that break across JetPack versions.
+
+### How Admiral makes it effortless
+
+Admiral separates **platform hardware management** from your **application userspace**:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│               YOUR NIXOS SYSTEM USERSPACE                   │
+│   • Pinned packages, Nix flakes, your application services  │
+│   • Standard systemd units, users, and tools                │
+│   • Packaged cleanly as an OCI container image              │
+└──────────────────────────────┬──────────────────────────────┘
+                               │ (standard OCI image via GHCR)
+┌──────────────────────────────▼──────────────────────────────┐
+│                    ADMIRAL EDGE PLATFORM                    │
+│   • Tested Jetson Orin BSP, kernel, bootloader, OTA updates │
+│   • Injected read-only NVIDIA driver (/run/admiral/nvidia)  │
+│   • Managed device lifecycle, cgroup v2, networking         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 3 Simple Steps to Port Any NixOS Workload to Admiral
+
+1. **Keep your existing NixOS packages and services:** Your application code, Python/C++ binaries, and `systemd` service declarations remain ordinary NixOS definitions (see `nix/configuration.nix`).
+2. **Add the 40-line Admiral adapter (`nix/admiral.nix`):**
+   - Configures container mode (`boot.isContainer = true`).
+   - Disables host daemon conflicts (udev, host sysctl, networkd).
+   - Points `LD_LIBRARY_PATH` to Admiral's injected driver path (`/run/admiral/nvidia/lib`).
+3. **Export as an OCI image (`flake.nix`):**
+   - Use `pkgs.dockerTools.buildLayeredImage` with `/init` entrypoint.
+   - Build, push to GHCR, and deploy to your Jetson devices instantly via Admiral!
+
+No kernel re-compilation, no JetPack hacking, and zero driver blobs inside your container repository.
+
+---
 
 ## What to show on the call
 
@@ -107,13 +151,20 @@ do not expose its HTTP port publicly without an authenticated proxy.
 
 ## Build and publish
 
+### Automated via GitHub Actions
+Every push to `main` and release tag triggers the GitHub Actions workflow (`.github/workflows/build-and-publish.yml`), which builds the ARM64 image and publishes it to GitHub Container Registry:
+- `ghcr.io/admrlos/workload-nixos-demo:latest`
+- `ghcr.io/admrlos/workload-nixos-demo:<tag>`
+
+### Local Build & Test
+
 On a native ARM64 Linux Nix builder:
 
 ```sh
 nix build .#image -L
 docker load -i result
 docker tag workload-nixos-demo:2026-09-21-nixos26.05-orin-r1 \
-  alexturner/workload-nixos-demo:2026-09-21-nixos26.05-orin-r1
+  ghcr.io/admrlos/workload-nixos-demo:2026-09-21-nixos26.05-orin-r1
 ```
 
 On Apple Silicon with Docker Desktop, the helper starts a pinned Linux Nix
@@ -122,7 +173,8 @@ builder and keeps downloaded packages in a dedicated named volume:
 ```sh
 bash scripts/build.sh
 bash scripts/test-local.sh
-docker push alexturner/workload-nixos-demo:2026-09-21-nixos26.05-orin-r1
+docker push ghcr.io/admrlos/workload-nixos-demo:2026-09-21-nixos26.05-orin-r1
+docker push ghcr.io/admrlos/workload-nixos-demo:latest
 ```
 
 The helper expects a Git checkout; new source files must be `git add`ed for Nix

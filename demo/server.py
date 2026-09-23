@@ -85,6 +85,8 @@ class Handler(BaseHTTPRequestHandler):
             content, kind = b'{"dashboard":"ok"}', "application/json"
         elif route == "/":
             content, kind = (ROOT / "index.html").read_bytes(), "text/html; charset=utf-8"
+        elif route == "/admiral-logo.svg":
+            content, kind = (ROOT / "admiral-logo.svg").read_bytes(), "image/svg+xml"
         else:
             self.send_error(404)
             return

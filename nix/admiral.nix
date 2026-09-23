@@ -22,6 +22,7 @@
   nix.channel.enable = false;
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
   nix.settings.trusted-users = [ "root" ];
+  nix.settings.flake-registry = "";
   # Nix binaries do not search conventional /usr/lib paths. Explicitly expose
   # Admiral's payload to services and logins; glibc still comes from NixOS.
   environment.sessionVariables.LD_LIBRARY_PATH = "/run/admiral/nvidia/lib";

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Docker Desktop/ARM64 packaging and service checks. Does not attest Jetson GPU.
 set -euo pipefail
-image="${IMAGE:-alexturner/workload-nixos-demo:2026-09-21-nixos26.05-orin-r1}"
+image="${IMAGE:-ghcr.io/admrlos/workload-nixos-demo:2026-09-21-nixos26.05-orin-r1}"
 name="admiral-nixos-test-$$"
 scratch=$(mktemp -d)
 cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; rm -rf "$scratch"; }
@@ -25,6 +25,9 @@ web_port=$(docker port "$name" 8080/tcp | awk -F: '{print $NF}')
 ssh_port=$(docker port "$name" 22/tcp | awk -F: '{print $NF}')
 curl -fsS "http://127.0.0.1:$web_port/" > "$scratch/index.html"
 grep -q 'Warehouse patrol' "$scratch/index.html"
+grep -q 'admiral-dark.CawzA3qg.svg' "$scratch/index.html"
+curl -fsS "http://127.0.0.1:$web_port/admiral-logo.svg" > "$scratch/admiral-logo.svg"
+grep -q '<svg' "$scratch/admiral-logo.svg"
 curl -fsS "http://127.0.0.1:$web_port/api/status" > "$scratch/status.json"
 python3 - "$scratch/status.json" <<'PY'
 import json, sys

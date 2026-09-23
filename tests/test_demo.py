@@ -25,6 +25,13 @@ class DemoTests(unittest.TestCase):
         self.assertEqual(status["gpu"]["result"], "PENDING")
         self.assertTrue(status["simulation"])
 
+    def test_admiral_logo_assets(self):
+        index_html = (Path(__file__).parents[1] / "demo/index.html").read_text()
+        self.assertIn("https://admrl.co/_app/immutable/assets/admiral-dark.CawzA3qg.svg", index_html)
+        self.assertIn("/admiral-logo.svg", index_html)
+        logo_svg = (Path(__file__).parents[1] / "demo/admiral-logo.svg").read_text()
+        self.assertTrue(logo_svg.startswith("<svg") and logo_svg.strip().endswith("</svg>"))
+
 
 if __name__ == "__main__":
     unittest.main()
