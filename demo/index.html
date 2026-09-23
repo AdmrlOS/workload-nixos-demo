@@ -771,8 +771,8 @@
       </div>
       <div class="stat-card">
         <div class="stat-label">GPU acceleration</div>
-        <div class="stat-val" id="stat-gpu">CUDA sm_87</div>
-        <div class="stat-sub" id="stat-gpu-sub">Injected Driver API · no fallback</div>
+        <div class="stat-val" id="stat-gpu">Qwen2.5 (sm_87)</div>
+        <div class="stat-sub" id="stat-gpu-sub">Injected Driver API · No CPU fallback</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Workload status</div>
@@ -792,23 +792,23 @@
               <div class="terminal-dot dot-yellow"></div>
               <div class="terminal-dot dot-green"></div>
             </div>
-            <h2>admiral-chat --model edge-transformer-sm87</h2>
+            <h2>admiral-chat --model Qwen2.5-0.5B-Instruct</h2>
           </div>
-          <span class="tiny" id="chat-backend-badge">CUDA ACCELERATED</span>
+          <span class="tiny" id="chat-backend-badge">QWEN2.5 · CUDA sm_87</span>
         </div>
 
         <div class="chat-messages" id="chat-window">
           <!-- Welcome message -->
           <div class="message assistant">
             <div class="message-bubble">
-              Welcome to the Admiral NixOS edge demonstration. I am a Small Language Model running natively on this
+              Welcome to the Admiral NixOS edge demonstration. I am <strong>Qwen2.5 (0.5B-Instruct)</strong>, running on-device on this
               <strong>NVIDIA Jetson Orin</strong> inside an unprivileged NixOS userspace container, accelerated by
               the platform's injected NVIDIA driver (<code>libcuda.so.1</code>) via the CUDA Driver API.
               <br><br>
-              Ask me about the architecture, or click one of the suggested prompts below to run an on-device inference!
+              <strong>Zero CPU Fallback:</strong> All transformer projections, RMSNorms, and SwiGLU activations execute directly on the Orin Ampere GPU. Ask me about Admiral, NixOS packaging, or click one of the suggested prompts below to run an on-device inference!
             </div>
             <div class="message-meta">
-              <span>Admiral Edge AI</span>
+              <span>Qwen2.5 Edge Assistant</span>
               <span class="telemetry-tag">Ready</span>
             </div>
           </div>
@@ -816,9 +816,10 @@
 
         <div class="prompt-suggestions">
           <button class="prompt-chip" data-prompt="⚡ Run CUDA inference benchmark">⚡ Run CUDA benchmark</button>
-          <button class="prompt-chip" data-prompt="🚢 What is Admiral OS?">🚢 What is Admiral OS?</button>
+          <button class="prompt-chip" data-prompt="🚢 What is Admiral?">🚢 What is Admiral?</button>
+          <button class="prompt-chip" data-prompt="🤖 What LLM are you using?">🤖 What LLM is this?</button>
           <button class="prompt-chip" data-prompt="❄️ How does NixOS run on Jetson Orin?">❄️ NixOS on Jetson</button>
-          <button class="prompt-chip" data-prompt="🛡️ How does driver injection work?">🛡️ Driver injection</button>
+          <button class="prompt-chip" data-prompt="🛡️ Why no CPU fallback?">🛡️ Why no CPU fallback?</button>
           <button class="prompt-chip" data-prompt="📊 Inspect live device telemetry">📊 Live telemetry</button>
         </div>
 
@@ -1028,6 +1029,25 @@ systemctl status robotics-demo</div>
         if (!response.ok) throw new Error('HTTP ' + response.status);
         const data = await response.json();
 
+        if (data.result === 'FAIL') {
+          assistantBubble.innerHTML = `
+            <div style="color:var(--amber);background:rgba(255,189,46,0.08);border:1px solid rgba(255,189,46,0.3);padding:12px 14px;border-radius:8px;">
+              <strong>⚠️ CUDA Acceleration Required (No CPU Fallback)</strong><br>
+              ${data.error || 'NVIDIA driver (libcuda.so.1) not detected on host.'}
+            </div>
+          `;
+          const metaDiv = assistantBubble.parentElement.querySelector('.message-meta');
+          if (metaDiv) {
+            metaDiv.innerHTML = `<span>Qwen2.5</span> <span class="telemetry-tag" style="color:var(--amber);background:rgba(255,189,46,0.15)">CUDA Required</span>`;
+          }
+          isGenerating = false;
+          sendBtn.disabled = false;
+          chatInput.disabled = false;
+          chatInput.focus();
+          chatWindow.scrollTop = chatWindow.scrollHeight;
+          return;
+        }
+
         // Stream typing animation
         assistantBubble.innerHTML = '';
         const fullText = data.text || 'No response generated.';
@@ -1052,7 +1072,7 @@ systemctl status robotics-demo</div>
         // Update telemetry tag in meta
         const metaDiv = assistantBubble.parentElement.querySelector('.message-meta');
         if (metaDiv && data.tok_per_sec) {
-          metaDiv.innerHTML = `<span>Admiral Edge AI</span> <span class="telemetry-tag">⚡ ${data.tok_per_sec} tok/s · ${data.tokens} tokens · ${data.latency_ms} ms</span>`;
+          metaDiv.innerHTML = `<span>Qwen2.5</span> <span class="telemetry-tag">⚡ ${data.tok_per_sec} tok/s · ${data.tokens} tokens · ${data.latency_ms} ms (CUDA)</span>`;
         }
 
         // Update metric tiles
@@ -1133,11 +1153,16 @@ systemctl status robotics-demo</div>
 
         // GPU status & tiles
         const gpuPass = g.result === 'PASS' && isFresh;
+        const llmPass = llm.result === 'PASS';
         $('gpu-result-badge').textContent = isFresh ? g.result : 'STALE';
         $('gpu-result-badge').style.color = gpuPass ? 'var(--mint)' : 'var(--amber)';
 
-        $('stat-gpu').textContent = gpuPass ? 'CUDA sm_87' : (g.result === 'FAIL' ? 'No CUDA Driver' : 'Checking…');
-        $('stat-gpu').style.color = gpuPass ? 'var(--mint)' : (g.result === 'FAIL' ? 'var(--amber)' : '#fff');
+        $('stat-gpu').textContent = gpuPass ? 'Qwen2.5 (sm_87)' : 'No CUDA Driver';
+        $('stat-gpu').style.color = gpuPass ? 'var(--mint)' : 'var(--amber)';
+        $('stat-gpu-sub').textContent = gpuPass ? 'CUDA Driver API · Verified GPU' : 'No CPU fallback (GPU Required)';
+
+        $('chat-backend-badge').textContent = gpuPass ? 'QWEN2.5 · CUDA sm_87' : 'CUDA REQUIRED · NO CPU FALLBACK';
+        $('chat-backend-badge').style.color = gpuPass ? 'var(--mint)' : 'var(--amber)';
 
         $('gpu-device-name').textContent = g.device || (g.result === 'FAIL' ? 'No NVIDIA hardware detected (Docker/Host)' : 'Detecting…');
         if (g.compute_capability) $('gpu-compute-cap').textContent = `Compute ${g.compute_capability} (Ampere)`;

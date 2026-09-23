@@ -1,4 +1,4 @@
-"""Admiral NixOS Edge Demo Server: On-Device LLM Chat & Checked CUDA Telemetry."""
+"""Admiral NixOS Edge Demo Server: On-Device Qwen2.5 LLM Chat & Checked CUDA Telemetry."""
 import json
 import math
 import os
@@ -80,11 +80,14 @@ def status():
         "simulation": True,
         "system": os.path.realpath("/run/current-system"),
         "llm": {
-            "model": "Admiral Edge Transformer (sm_87)",
+            "model": GLOBAL_MODEL.MODEL_ID,
             "cuda_active": GLOBAL_MODEL.cuda.available,
-            "device": GLOBAL_MODEL.cuda.device_name if GLOBAL_MODEL.cuda.available else "CPU Fallback",
+            "result": "PASS" if GLOBAL_MODEL.cuda.available else "FAIL",
+            "device": GLOBAL_MODEL.cuda.device_name if GLOBAL_MODEL.cuda.available else "None (GPU Required)",
             "compute_capability": GLOBAL_MODEL.cuda.compute_cap,
-            "backend": GLOBAL_MODEL.last_backend,
+            "backend": "CUDA Driver API (libcuda.so.1 / sm_87)" if GLOBAL_MODEL.cuda.available else "None",
+            "cpu_fallback": False,
+            "system_prompt_configured": True,
             "total_tokens": GLOBAL_MODEL.total_tokens_generated,
             "inferences": GLOBAL_MODEL.total_inferences,
             "last_tok_per_sec": GLOBAL_MODEL.last_tok_per_sec,
@@ -130,7 +133,7 @@ class Handler(BaseHTTPRequestHandler):
         elif route == "/api/chat":
             params = urllib.parse.parse_qs(url.query)
             prompt = params.get("prompt", [""])[0] or params.get("message", [""])[0]
-            res = GLOBAL_MODEL.generate(prompt)
+            res = GLOBAL_MODEL.generate_safe(prompt)
             self._send_json(res)
         elif route == "/api/gpu":
             with LOCK:
@@ -169,10 +172,10 @@ class Handler(BaseHTTPRequestHandler):
                 raw = self.rfile.read(length)
                 payload = json.loads(raw.decode("utf-8") if raw else "{}")
                 prompt = payload.get("prompt") or payload.get("message") or ""
-                result = GLOBAL_MODEL.generate(prompt)
+                result = GLOBAL_MODEL.generate_safe(prompt)
                 self._send_json(result)
             except Exception as e:
-                self._send_json({"error": str(e)}, code=400)
+                self._send_json({"result": "FAIL", "error": str(e)}, code=400)
         elif route == "/api/gpu/probe":
             value = run_gpu_probe()
             with LOCK:

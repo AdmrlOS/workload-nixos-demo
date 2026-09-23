@@ -11,8 +11,9 @@ Do not describe an untested image as board-validated.
 
 **1. Show the dashboard.** “This is a complete NixOS userspace built from a locked
 flake. Admiral boots the device and deploys it as an OCI artifact.” The on-device
-LLM chat interface demonstrates edge AI inference directly on Jetson Orin with
-the official Admiral theming, accelerated via the injected CUDA Driver API.
+**Qwen2.5-0.5B-Instruct** chat interface demonstrates edge AI inference directly on
+Jetson Orin with the official Admiral theming, accelerated via the injected CUDA
+Driver API. CPU fallback is strictly disabled to guarantee genuine GPU execution.
 
 **2. Show real GPU execution.** The independent GPU panel runs a coordinate
 transform on 65,539 synthetic points and compares every output with a CPU

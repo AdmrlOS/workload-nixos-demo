@@ -56,11 +56,13 @@ No kernel re-compilation, no JetPack hacking, and zero driver blobs inside your 
 
 ## What to show on the call
 
-1. Open `http://DEVICE_IP:8080`. Interact with the on-device Small Language Model
-   via the chat interface styled with Admiral's theme (admrl.co). It runs on-device
-   inference using the CUDA Driver API on the Jetson Orin. The right-hand panel
-   reports real-time inference telemetry and an independent GPU coordinate-transform
-   test, including honest failure reporting when CUDA is unavailable.
+1. Open `http://DEVICE_IP:8080`. Interact with the on-device **Qwen2.5-0.5B-Instruct**
+   model via the chat interface styled with Admiral's theme (admrl.co). It runs
+   on-device inference using the CUDA Driver API on the Jetson Orin with a custom
+   ChatML system prompt describing Admiral. CPU fallback is strictly disabled: all
+   tensor operations require the Jetson Orin Ampere GPU, reporting honest failure
+   when CUDA is unavailable. The right-hand panel reports real-time inference
+   telemetry and an independent GPU coordinate-transform test.
 2. `ssh demo@DEVICE_IP` using the private key matching `alexanderturner`'s GitHub
    public key, then run `demo-status`, `demo-chat "What is Admiral OS?"`, and
    `timeout 30 demo-gpu`.

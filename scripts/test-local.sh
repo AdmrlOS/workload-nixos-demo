@@ -27,7 +27,7 @@ curl -fsS "http://127.0.0.1:$web_port/" > "$scratch/index.html"
 grep -q 'admiral-chat' "$scratch/index.html"
 grep -q 'admiral-dark.CawzA3qg.svg' "$scratch/index.html"
 curl -fsS -X POST "http://127.0.0.1:$web_port/api/chat" -H "Content-Type: application/json" -d '{"prompt":"What is Admiral?"}' > "$scratch/chat.json"
-grep -q 'Admiral' "$scratch/chat.json"
+grep -q 'CPU fallback is strictly disabled' "$scratch/chat.json"
 curl -fsS "http://127.0.0.1:$web_port/admiral-logo.svg" > "$scratch/admiral-logo.svg"
 grep -q '<svg' "$scratch/admiral-logo.svg"
 curl -fsS "http://127.0.0.1:$web_port/api/status" > "$scratch/status.json"
@@ -40,7 +40,11 @@ assert s['uid'] == 1000 and 28 in s['groups'], s
 assert s['simulation'] is True, s
 # Docker Desktop has no NVIDIA driver: failure must be explicit, never fallback.
 assert s['gpu']['result'] == 'FAIL', s
-print('PASS live API, non-root identity, honest no-GPU status')
+assert s['llm']['result'] == 'FAIL', s
+assert s['llm']['cuda_active'] is False, s
+assert s['llm']['cpu_fallback'] is False, s
+assert 'Qwen2.5' in s['llm']['model'], s
+print('PASS live API, non-root identity, honest no-GPU status (zero CPU fallback)')
 PY
 # Temporary key is injected into this disposable container only.
 ssh-keygen -q -t ed25519 -N '' -f "$scratch/id"
@@ -56,8 +60,11 @@ done
 set +e
 in_guest 'runuser -u demo -- timeout 30 /run/current-system/sw/bin/demo-gpu'
 gpu_exit=$?
+in_guest 'runuser -u demo -- /run/current-system/sw/bin/demo-chat "What is Admiral?"'
+chat_exit=$?
 set -e
 test "$gpu_exit" = 1
+test "$chat_exit" = 1
 in_guest 'systemctl restart robotics-demo; systemctl is-active robotics-demo'
 in_guest 'mkdir -p /run/systemd/system/robotics-demo.service.d; printf "[Service]\nExecStopPost=/run/current-system/sw/bin/touch /var/lib/admiral-demo/shutdown.ok\n" > /run/systemd/system/robotics-demo.service.d/shutdown-test.conf; systemctl daemon-reload'
 docker stop -t 15 "$name" >/dev/null

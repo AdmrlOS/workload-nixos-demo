@@ -25,7 +25,9 @@ class DemoTests(unittest.TestCase):
         self.assertEqual(status["gpu"]["result"], "PENDING")
         self.assertTrue(status["simulation"])
         self.assertIn("llm", status)
-        self.assertIn("Admiral Edge Transformer", status["llm"]["model"])
+        self.assertEqual(status["llm"]["model"], "Qwen/Qwen2.5-0.5B-Instruct")
+        self.assertFalse(status["llm"]["cpu_fallback"])
+        self.assertTrue(status["llm"]["system_prompt_configured"])
 
     def test_admiral_logo_assets(self):
         index_html = (Path(__file__).parents[1] / "demo/index.html").read_text()
@@ -37,21 +39,31 @@ class DemoTests(unittest.TestCase):
     def test_chat_interface_present_in_website(self):
         index_html = (Path(__file__).parents[1] / "demo/index.html").read_text()
         self.assertIn("admiral-chat", index_html)
+        self.assertIn("Qwen2.5-0.5B-Instruct", index_html)
         self.assertIn("chat-window", index_html)
         self.assertIn("chat-input", index_html)
         self.assertIn("prompt-chip", index_html)
         self.assertIn("Run edge LLMs", index_html)
 
-    def test_on_device_llm_inference(self):
-        result = server.GLOBAL_MODEL.generate("What is Admiral OS?")
-        self.assertIn("Admiral", result["text"])
-        self.assertGreater(result["tokens"], 0)
-        self.assertGreater(result["tok_per_sec"], 0)
-        self.assertIn("backend", result)
+    def test_qwen_system_prompt_and_chatml(self):
+        prompt = server.GLOBAL_MODEL.format_chatml("What is Admiral?")
+        self.assertIn("<|im_start|>system", prompt)
+        self.assertIn("Admiral (admrl.co)", prompt)
+        self.assertIn("Qwen2.5", prompt)
+        self.assertIn("<|im_start|>user\nWhat is Admiral?\n<|im_end|>", prompt)
+        self.assertIn("<|im_start|>assistant", prompt)
 
-        benchmark = server.GLOBAL_MODEL.generate("Run CUDA benchmark")
-        self.assertIn("Benchmark", benchmark["text"])
-        self.assertGreater(benchmark["tokens"], 30)
+    def test_strictly_no_cpu_fallback(self):
+        # On hosts without NVIDIA driver, engine must explicitly fail, never fall back to CPU
+        if not server.GLOBAL_MODEL.cuda.available:
+            with self.assertRaises(RuntimeError) as ctx:
+                server.GLOBAL_MODEL.generate("What is Admiral?")
+            self.assertIn("CPU fallback is strictly disabled", str(ctx.exception))
+
+            safe_res = server.GLOBAL_MODEL.generate_safe("What is Admiral?")
+            self.assertEqual(safe_res["result"], "FAIL")
+            self.assertFalse(safe_res["cuda_active"])
+            self.assertIn("CPU fallback is strictly disabled", safe_res["error"])
 
 
 if __name__ == "__main__":
