@@ -18,7 +18,10 @@ def offload_evidence(line):
 def main():
     path = Path(os.environ.get("MINICPM_EVIDENCE", "/run/minicpm/cuda.json"))
     path.unlink(missing_ok=True)
-    process = subprocess.Popen(sys.argv[1:], stdout=subprocess.PIPE,
+    # llama.cpp routes library model-loading/offload messages at debug level.
+    # Without this, a healthy GPU server never publishes readiness evidence.
+    env = {**os.environ, "LLAMA_LOG_VERBOSITY": "4"}
+    process = subprocess.Popen(sys.argv[1:], env=env, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, text=True, bufsize=1)
     def stop(*_):
         process.terminate()

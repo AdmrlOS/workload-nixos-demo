@@ -23,6 +23,24 @@ class Backend(BaseHTTPRequestHandler):
         self.wfile.write(b'{"status":"ok"}')
     def do_POST(self):
         self.requests.append(json.loads(self.rfile.read(int(self.headers['Content-Length']))))
+        if self.requests[-1].get('stream'):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.end_headers()
+            def emit(data):
+                self.wfile.write(('data: ' + json.dumps(data, ensure_ascii=False) + '\r\n\r\n').encode())
+                self.wfile.flush()
+            emit({'choices': [{'delta': {'content': 'Hello 🚀'}}]})
+            if self.release is not None:
+                self.release.wait(5)
+            if self.truncate:
+                return
+            emit({'choices': [{'delta': {'content': ' Admiral'}}]})
+            emit({'choices': [], 'usage': {'completion_tokens': 4},
+                  'timings': {'predicted_per_second': 24.79}})
+            self.wfile.write(b'data: [DONE]\r\n\r\n')
+            self.wfile.flush()
+            return
         self.send_response(200)
         self.end_headers()
         self.wfile.write(json.dumps({
@@ -43,6 +61,8 @@ class LLMTests(unittest.TestCase):
         self.addCleanup(self.backend.shutdown)
         self.engine = MiniCPMEngine(f'http://127.0.0.1:{self.backend.server_port}', self.evidence)
         Backend.requests = []
+        Backend.release = None
+        Backend.truncate = False
 
     def ready(self):
         self.evidence.write_text(json.dumps({'device': 'CUDA0', 'gpu_layers': 25, 'total_layers': 25}))
@@ -97,6 +117,75 @@ class LLMTests(unittest.TestCase):
         self.assertIsNone(offload_evidence('offloaded 24/25 layers to GPU'))
         self.assertEqual(offload_evidence('load_tensors: offloaded 25/25 layers to GPU')['gpu_layers'], 25)
 
+    def test_stream_delivers_before_generation_finishes(self):
+        self.ready()
+        Backend.release = threading.Event()
+        events = self.engine.stream('Hello')
+        try:
+            self.assertEqual(next(events), {'type': 'delta', 'text': 'Hello 🚀'})
+            self.assertFalse(Backend.release.is_set())
+            self.assertEqual(self.engine.total_inferences, 0)
+            self.assertTrue(Backend.requests[0]['stream_options']['include_usage'])
+            Backend.release.set()
+            rest = list(events)
+        finally:
+            Backend.release.set()
+            events.close()
+        self.assertEqual(rest[-1]['type'], 'done')
+        self.assertEqual(rest[-1]['text'], 'Hello 🚀 Admiral')
+        self.assertEqual(rest[-1]['tokens'], 4)
+        self.assertEqual(rest[-1]['tok_per_sec'], 24.79)
+        self.assertEqual(self.engine.total_inferences, 1)
+        self.assertFalse(self.engine._lock.locked())
+
+    def test_truncated_stream_fails_and_releases_lock(self):
+        self.ready()
+        Backend.truncate = True
+        events = self.engine.stream('Hello')
+        self.assertEqual(next(events)['type'], 'delta')
+        with self.assertRaisesRegex(RuntimeError, 'ended unexpectedly'):
+            list(events)
+        self.assertFalse(self.engine._lock.locked())
+        self.assertEqual(self.engine.total_inferences, 0)
+
+    def test_cancelled_stream_releases_lock(self):
+        self.ready()
+        events = self.engine.stream('Hello')
+        next(events)
+        events.close()
+        self.assertFalse(self.engine._lock.locked())
+        self.assertEqual(self.engine.total_inferences, 0)
+
+    def test_browser_stream_roundtrip_and_unavailable_error(self):
+        self.ready()
+        web = ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
+        threading.Thread(target=web.serve_forever, daemon=True).start()
+        self.addCleanup(web.server_close)
+        self.addCleanup(web.shutdown)
+        import urllib.request
+        from llm import sse_data
+        def request():
+            return urllib.request.Request(f'http://127.0.0.1:{web.server_port}/api/chat',
+                data=json.dumps({'prompt': 'Hello', 'stream': True}).encode(),
+                headers={'Content-Type': 'application/json'})
+        with patch.object(server, 'GLOBAL_MODEL', self.engine):
+            Backend.release = threading.Event()
+            try:
+                with urllib.request.urlopen(request(), timeout=3) as response:
+                    self.assertIn('text/event-stream', response.headers['Content-Type'])
+                    events = sse_data(response)
+                    self.assertEqual(json.loads(next(events))['text'], 'Hello 🚀')
+                    Backend.release.set()
+                    rest = [json.loads(event) for event in events]
+                    self.assertEqual(rest[-1]['type'], 'done')
+            finally:
+                Backend.release.set()
+            self.evidence.unlink()
+            with urllib.request.urlopen(request()) as response:
+                events = [json.loads(event) for event in sse_data(response)]
+            self.assertEqual(events[0]['type'], 'error')
+            self.assertIn('CPU fallback is strictly disabled', events[0]['error'])
+
     def test_browser_api_roundtrip(self):
         self.ready()
         web = ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
@@ -115,3 +204,33 @@ class LLMTests(unittest.TestCase):
             self.evidence.unlink()
             with urllib.request.urlopen(f'http://127.0.0.1:{web.server_port}/healthz') as response:
                 self.assertEqual(json.load(response)['llm'], 'FAIL')
+
+
+class SupervisorTests(unittest.TestCase):
+    def test_debug_offload_evidence_and_cleanup(self):
+        import os
+        import subprocess
+        import time
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp) / 'cuda.json'
+            child = """import os, sys
+if os.environ.get('LLAMA_LOG_VERBOSITY') == '4':
+    print('load_tensors: offloaded 43/43 layers to GPU', flush=True)
+    print('load_tensors: CUDA0 model buffer size = 1484.08 MiB', flush=True)
+sys.stdin.read()
+"""
+            process = subprocess.Popen(
+                [sys.executable, str(Path(__file__).parents[1] / 'demo/inference_service.py'),
+                 sys.executable, '-u', '-c', child],
+                env={**os.environ, 'MINICPM_EVIDENCE': str(evidence), 'LLAMA_LOG_VERBOSITY': '3'},
+                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            try:
+                deadline = time.monotonic() + 5
+                while not evidence.exists() and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertTrue(evidence.exists(), 'Supervisor must enable offload logging')
+                self.assertEqual(json.loads(evidence.read_text())['gpu_layers'], 43)
+            finally:
+                process.communicate(b'', timeout=5)
+            self.assertEqual(process.returncode, 0)
+            self.assertFalse(evidence.exists())

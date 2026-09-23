@@ -16,7 +16,7 @@ docker exec "$builder" nix --extra-experimental-features 'nix-command flakes' \
 mkdir -p build
 docker cp -L "$builder:/tmp/admiral-nixos-image" build/image.tar.gz
 docker load -i build/image.tar.gz
-image="${IMAGE_REPOSITORY:-ghcr.io/admrlos/workload-nixos-demo}:${IMAGE_TAG:-2026-09-23-nixos26.05-minicpm5-r2}"
-docker tag workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r2 "$image"
-docker tag workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r2 "${IMAGE_REPOSITORY:-ghcr.io/admrlos/workload-nixos-demo}:latest"
+image="${IMAGE_REPOSITORY:-ghcr.io/admrlos/workload-nixos-demo}:${IMAGE_TAG:-2026-09-23-nixos26.05-minicpm5-r3}"
+docker tag workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r3 "$image"
+docker tag workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r3 "${IMAGE_REPOSITORY:-ghcr.io/admrlos/workload-nixos-demo}:latest"
 echo "Built $image (and ${IMAGE_REPOSITORY:-ghcr.io/admrlos/workload-nixos-demo}:latest)"

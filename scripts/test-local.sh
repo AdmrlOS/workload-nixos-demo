@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Docker Desktop/ARM64 packaging and service checks. Does not attest Jetson GPU.
 set -euo pipefail
-image="${IMAGE:-ghcr.io/admrlos/workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r2}"
+image="${IMAGE:-ghcr.io/admrlos/workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r3}"
 name="admiral-nixos-test-$$"
 scratch=$(mktemp -d)
 cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; rm -rf "$scratch"; }

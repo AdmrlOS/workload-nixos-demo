@@ -1,4 +1,5 @@
 """Admiral NixOS Edge Demo Server: On-Device MiniCPM5-2B LLM Chat & Checked CUDA Telemetry."""
+from contextlib import closing
 import json
 import math
 import os
@@ -112,6 +113,32 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
+    def _stream_chat(self, prompt, history):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache, no-store, no-transform")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.flush()
+        self.close_connection = True
+
+        def send(event):
+            self.wfile.write(("data: " + json.dumps(event) + "\n\n").encode())
+            self.wfile.flush()
+
+        try:
+            with closing(GLOBAL_MODEL.stream(prompt, history)) as events:
+                try:
+                    for event in events:
+                        send(event)
+                except (BrokenPipeError, ConnectionResetError):
+                    return  # closing the generator also closes llama.cpp's connection
+                except Exception as error:
+                    send({"type": "error", "result": "FAIL", "error": str(error)})
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
     def do_GET(self):
         url = urllib.parse.urlparse(self.path)
         route = url.path
@@ -161,6 +188,9 @@ class Handler(BaseHTTPRequestHandler):
                 raw = self.rfile.read(length)
                 payload = json.loads(raw.decode("utf-8") if raw else "{}")
                 prompt = payload.get("prompt") or payload.get("message") or ""
+                if payload.get("stream") is True:
+                    self._stream_chat(prompt, payload.get("history"))
+                    return
                 result = GLOBAL_MODEL.generate_safe(prompt, payload.get("history"))
                 self._send_json(result)
             except Exception as e:

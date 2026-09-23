@@ -24,7 +24,7 @@
       default = self.packages.${system}.image;
       image = pkgs.dockerTools.buildLayeredImage {
         name = "workload-nixos-demo";
-        tag = "2026-09-23-nixos26.05-minicpm5-r2";
+        tag = "2026-09-23-nixos26.05-minicpm5-r3";
         architecture = "arm64";
         contents = [ root ];
         maxLayers = 32;
@@ -36,7 +36,7 @@
           Labels = {
             "org.opencontainers.image.title" = "Admiral NixOS Edge AI Demo";
             "org.opencontainers.image.source" = "https://github.com/admrlos/workload-nixos-demo";
-            "org.opencontainers.image.version" = "2026-09-23-nixos26.05-minicpm5-r2";
+            "org.opencontainers.image.version" = "2026-09-23-nixos26.05-minicpm5-r3";
             "co.admrl.workload" = "nixos-robotics";
           };
         };

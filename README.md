@@ -8,7 +8,7 @@ BSP-owned NVIDIA driver.
 
 - **Source:** `https://github.com/AdmrlOS/workload-nixos-demo`
 - **Container Registry (GHCR):** `ghcr.io/admrlos/workload-nixos-demo:latest`
-- **Release tag:** `ghcr.io/admrlos/workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r2`
+- **Release tag:** `ghcr.io/admrlos/workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r3`
 - See [PUBLISHED.md](PUBLISHED.md) for immutable digests and validation details.
 
 ---
@@ -115,7 +115,7 @@ See [OpenBMB's deployment guide](https://github.com/OpenBMB/MiniCPM/blob/main/do
 
 The server binds only `127.0.0.1:8081`, explicitly selects `CUDA0`, disables
 memory auto-fitting and requests all layers on GPU. The supervisor records full
-offload and a CUDA model buffer; `/api/status` also checks server health before
+offload and a CUDA model buffer (library debug logging is explicitly enabled); `/api/status` also checks server health before
 reporting model readiness. Driver availability or the independent probe alone
 cannot make the LLM status PASS. Missing/incompatible CUDA fails without a CPU
 fallback. CUDA 12.6 runtime compatibility with the deployed BSP must be checked
@@ -123,7 +123,10 @@ on the target; allow space for model, runtime, KV cache and the larger OCI image
 
 The existing browser and `demo-chat` use the same local model service. The web
 chat retains up to six turns, validates history, sends the server-owned Admiral
-system prompt, and displays the actual generated answer without a typing delay.
+system prompt, and streams actual generated tokens into the browser over SSE.
+Stop cancels the response; interrupted answers stay visible but are excluded
+from subsequent conversation history. Final token usage and decode speed arrive
+when generation completes. The JSON API and CLI remain available.
 Generation uses the GGUF chat template, an 8192-token context and up to 512 output
 tokens. Oversized conversations fail explicitly; Clear starts a fresh chat.
 Token counts and decode speed come from llama.cpp; latency is measured wall time.
@@ -200,8 +203,8 @@ On a native ARM64 Linux Nix builder:
 ```sh
 nix build .#image -L
 docker load -i result
-docker tag workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r2 \
-  ghcr.io/admrlos/workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r2
+docker tag workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r3 \
+  ghcr.io/admrlos/workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r3
 ```
 
 On Apple Silicon with Docker Desktop, the helper starts a pinned Linux Nix
@@ -210,7 +213,7 @@ builder and keeps downloaded packages in a dedicated named volume:
 ```sh
 bash scripts/build.sh
 bash scripts/test-local.sh
-docker push ghcr.io/admrlos/workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r2
+docker push ghcr.io/admrlos/workload-nixos-demo:2026-09-23-nixos26.05-minicpm5-r3
 docker push ghcr.io/admrlos/workload-nixos-demo:latest
 ```
 

@@ -68,7 +68,7 @@ in {
     extraGroups = [ "admiral-video" ];
     openssh.authorizedKeys.keyFiles = [ ../ssh/authorized_keys ];
   };
-  environment.etc."admiral-demo/version".text = "2026-09-23-nixos26.05-minicpm5-r2\n";
+  environment.etc."admiral-demo/version".text = "2026-09-23-nixos26.05-minicpm5-r3\n";
   environment.etc."admiral-demo/flake.lock".source = ../flake.lock;
   environment.etc."admiral-demo/source".source = source;
   environment.etc."motd".text = ''

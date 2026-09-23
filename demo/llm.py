@@ -51,6 +51,19 @@ userspace packaging, not universal compatibility with arbitrary NixOS modules.
 """
 
 
+def sse_data(response):
+    """Read complete SSE events; readline handles fragmented UTF-8/network chunks."""
+    lines = []
+    for raw in response:
+        line = raw.decode("utf-8").rstrip("\r\n")
+        if not line:
+            if lines:
+                yield "\n".join(lines)
+                lines = []
+        elif line.startswith("data:"):
+            lines.append(line[5:].lstrip(" "))
+
+
 class MiniCPMEngine:
     MODEL_ID = "openbmb/MiniCPM5-2B"
 
@@ -129,15 +142,61 @@ class MiniCPMEngine:
             if not isinstance(text, str) or not text.strip():
                 raise RuntimeError("Model returned no answer; try a shorter question")
             tokens = response["usage"]["completion_tokens"]
-            self.last_latency_ms = round((time.monotonic() - start) * 1000, 1)
-            self.last_tok_per_sec = round(response.get("timings", {}).get("predicted_per_second", 0), 2)
-            self.total_tokens_generated += tokens
-            self.total_inferences += 1
-            return {"result": "PASS", "text": text, "model": self.MODEL_ID,
-                    "tokens": tokens, "tok_per_sec": self.last_tok_per_sec,
-                    "latency_ms": self.last_latency_ms, "backend": "llama.cpp / CUDA",
-                    "cuda_active": True, "device": state["device"],
-                    "total_tokens_all_time": self.total_tokens_generated}
+            return self._result(text, tokens, response.get("timings", {}), start, state)
+        finally:
+            self._lock.release()
+
+    def _result(self, text, tokens, timings, start, state):
+        self.last_latency_ms = round((time.monotonic() - start) * 1000, 1)
+        self.last_tok_per_sec = round(timings.get("predicted_per_second", 0), 2)
+        self.total_tokens_generated += tokens
+        self.total_inferences += 1
+        return {"result": "PASS", "text": text, "model": self.MODEL_ID,
+                "tokens": tokens, "tok_per_sec": self.last_tok_per_sec,
+                "latency_ms": self.last_latency_ms, "backend": "llama.cpp / CUDA",
+                "cuda_active": True, "device": state["device"],
+                "total_tokens_all_time": self.total_tokens_generated}
+
+    def stream(self, prompt, history=None):
+        """Yield real token deltas, followed by measured completion telemetry."""
+        messages = self.messages(prompt, history)
+        if not self._lock.acquire(blocking=False):
+            raise RuntimeError("Model is busy; try again when the current response finishes")
+        try:
+            state = self.status()
+            if state["result"] != "PASS":
+                raise RuntimeError(state["error"])
+            start = time.monotonic()
+            payload = {"model": self.MODEL_ID, "messages": messages, "stream": True,
+                       "stream_options": {"include_usage": True},
+                       "max_tokens": 512, "temperature": 1.0, "top_p": 0.95, "min_p": 0.0,
+                       "chat_template_kwargs": {"enable_thinking": False}}
+            request = urllib.request.Request(self.base_url + "/v1/chat/completions",
+                data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
+            text, usage, timings, completed = "", {}, {}, False
+            with urllib.request.urlopen(request, timeout=180) as response:
+                for data in sse_data(response):
+                    if data == "[DONE]":
+                        completed = True
+                        break
+                    chunk = json.loads(data)
+                    if chunk.get("error"):
+                        raise RuntimeError(str(chunk["error"]))
+                    usage = chunk.get("usage") or usage
+                    timings = chunk.get("timings") or timings
+                    for choice in chunk.get("choices", []):
+                        delta = choice.get("delta", {}).get("content")
+                        if delta:
+                            text += delta
+                            yield {"type": "delta", "text": delta}
+            if not completed:
+                raise RuntimeError("Model stream ended unexpectedly; please retry")
+            if not text.strip():
+                raise RuntimeError("Model returned no answer; try a shorter question")
+            tokens = usage.get("completion_tokens")
+            if not isinstance(tokens, int) or tokens < 0:
+                raise RuntimeError("Model stream ended without token usage")
+            yield {"type": "done", **self._result(text, tokens, timings, start, state)}
         finally:
             self._lock.release()
 

@@ -967,6 +967,8 @@ systemctl status robotics-demo</div>
     const sendBtn = $('send-btn');
     let isGenerating = false;
     let history = [];
+    let generationController = null;
+    const sendButtonLabel = sendBtn.innerHTML;
 
     // Append a message to the chat container
     function appendMessage(role, text, meta) {
@@ -1007,81 +1009,94 @@ systemctl status robotics-demo</div>
         .replace(/\n/g, '<br>');
     }
 
-    // Submit a prompt to the on-device LLM
+    // Read SSE incrementally, including events split across UTF-8/network chunks.
+    async function readChatStream(response, onEvent) {
+      if (!response.body) throw new Error('Streaming is unavailable in this browser');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      try {
+        while (true) {
+          const {value, done} = await reader.read();
+          buffer += decoder.decode(value, {stream: !done});
+          let boundary;
+          while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+            const frame = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 2);
+            const data = frame.split('\n').filter(line => line.startsWith('data:'))
+              .map(line => line.slice(5).trimStart()).join('\n');
+            if (data && onEvent(JSON.parse(data))) return;
+          }
+          if (done) throw new Error('Connection ended before the answer completed');
+        }
+      } finally {
+        await reader.cancel().catch(() => {});
+        reader.releaseLock();
+      }
+    }
+
     async function submitPrompt(promptText) {
       if (!promptText || isGenerating) return;
       isGenerating = true;
-      sendBtn.disabled = true;
+      generationController = new AbortController();
+      sendBtn.textContent = 'Stop';
       chatInput.disabled = true;
-
+      $('clear-btn').disabled = true;
       appendMessage('user', promptText);
       chatInput.value = '';
-
-      // Create assistant bubble placeholder with typing indicator
-      const assistantBubble = appendMessage('assistant', 'Computing on-device inference…', 'Processing');
+      const assistantBubble = appendMessage('assistant', 'Thinking…', 'Waiting for first token');
+      const metaDiv = assistantBubble.parentElement.querySelector('.message-meta');
+      let fullText = '';
 
       try {
         const response = await fetch('/api/chat', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: promptText, history })
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({prompt: promptText, history, stream: true}),
+          signal: generationController.signal
         });
-
         if (!response.ok) throw new Error('HTTP ' + response.status);
-        const data = await response.json();
-
-        if (data.result === 'FAIL') {
-          assistantBubble.innerHTML = `
-            <div style="color:var(--amber);background:rgba(255,189,46,0.08);border:1px solid rgba(255,189,46,0.3);padding:12px 14px;border-radius:8px;">
-              <strong>⚠️ CUDA Acceleration Required (No CPU Fallback)</strong><br>
-              ${formatMarkdown(data.error || 'Model service unavailable.')}
-            </div>
-          `;
-          const metaDiv = assistantBubble.parentElement.querySelector('.message-meta');
-          if (metaDiv) {
-            metaDiv.innerHTML = `<span>MiniCPM5-2B</span> <span class="telemetry-tag" style="color:var(--amber);background:rgba(255,189,46,0.15)">CUDA Required</span>`;
+        await readChatStream(response, data => {
+          if (data.type === 'error') throw new Error(data.error || 'Model service unavailable');
+          if (data.type === 'delta') {
+            fullText += data.text;
+            assistantBubble.innerHTML = formatMarkdown(fullText) + ' ▍';
+            metaDiv.textContent = 'MiniCPM5-2B · Generating on CUDA…';
+            chatWindow.scrollTop = chatWindow.scrollHeight;
           }
-          isGenerating = false;
-          sendBtn.disabled = false;
-          chatInput.disabled = false;
-          chatInput.focus();
-          chatWindow.scrollTop = chatWindow.scrollHeight;
-          return;
-        }
-
-        const fullText = data.text || 'No response generated.';
-        assistantBubble.innerHTML = formatMarkdown(fullText);
-        history.push({role: 'user', content: promptText}, {role: 'assistant', content: fullText});
-        history = history.slice(-12);
-        while (history.length && history.reduce((n, m) => n + m.content.length, 0) > 8000) history.splice(0, 2);
-        isGenerating = false;
-        sendBtn.disabled = false;
-        chatInput.disabled = false;
-        chatInput.focus();
-        chatWindow.scrollTop = chatWindow.scrollHeight;
-
-        // Update telemetry tag in meta
-        const metaDiv = assistantBubble.parentElement.querySelector('.message-meta');
-        if (metaDiv && data.tok_per_sec) {
-          metaDiv.innerHTML = `<span>MiniCPM5-2B</span> <span class="telemetry-tag">⚡ ${data.tok_per_sec} tok/s · ${data.tokens} tokens · ${data.latency_ms} ms (CUDA)</span>`;
-        }
-
-        // Update metric tiles
-        if (data.tok_per_sec) $('metric-tps').textContent = `${data.tok_per_sec} tok/s`;
-        if (data.latency_ms) $('metric-latency').textContent = `${data.latency_ms} ms`;
-        if (data.total_tokens_all_time) $('metric-tokens').textContent = data.total_tokens_all_time.toLocaleString();
-
+          if (data.type === 'done') {
+            fullText = data.text;
+            assistantBubble.innerHTML = formatMarkdown(fullText);
+            metaDiv.textContent = `MiniCPM5-2B · ${data.tok_per_sec} tok/s · ${data.tokens} tokens · ${data.latency_ms} ms (CUDA)`;
+            history.push({role: 'user', content: promptText}, {role: 'assistant', content: fullText});
+            history = history.slice(-12);
+            while (history.length && history.reduce((n, m) => n + m.content.length, 0) > 8000) history.splice(0, 2);
+            $('metric-tps').textContent = `${data.tok_per_sec} tok/s`;
+            $('metric-latency').textContent = `${data.latency_ms} ms`;
+            $('metric-tokens').textContent = data.total_tokens_all_time.toLocaleString();
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+            return true;
+          }
+          return false;
+        });
       } catch (err) {
-        assistantBubble.innerHTML = `<span style="color:var(--red);">Error connecting to edge LLM: ${formatMarkdown(err.message)}</span>`;
+        const stopped = err.name === 'AbortError';
+        assistantBubble.innerHTML = formatMarkdown(fullText) + (fullText ? '<br><br>' : '') +
+          `<span style="color:var(--amber);">${stopped ? 'Generation stopped.' : formatMarkdown(err.message)}</span>`;
+        metaDiv.textContent = stopped ? 'Stopped' : 'Response failed';
+      } finally {
         isGenerating = false;
-        sendBtn.disabled = false;
+        generationController = null;
+        sendBtn.innerHTML = sendButtonLabel;
         chatInput.disabled = false;
+        $('clear-btn').disabled = false;
         chatInput.focus();
       }
     }
 
     chatForm.onsubmit = e => {
       e.preventDefault();
+      if (isGenerating) { generationController?.abort(); return; }
       const val = chatInput.value.trim();
       if (val) submitPrompt(val);
     };
