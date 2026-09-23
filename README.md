@@ -107,7 +107,7 @@ does not infer success from a mounted library or a running web page.
 
 ## MiniCPM5-2B inference
 
-`minicpm.service` runs the flake-pinned llama.cpp b9190 with CUDA 12.6,
+`minicpm.service` runs the flake-pinned llama.cpp b9190 with the upstream MiniCPM5 tokenizer backport and CUDA 12.6,
 compiled for Orin (`sm_87`). The official Q4_K_M GGUF (1.56 GB) is fetched
 at revision `2079a22f3beaa4e306449978533478fe0522f4b3` and SHA-256 verified
 by Nix, then included in the image. No model download is needed on the device.

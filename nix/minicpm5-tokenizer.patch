@@ -1,0 +1,43 @@
+# Backport of https://github.com/ggml-org/llama.cpp/pull/23384
+# Upstream commit 9830508a0716a8cf5755eccf8b60fd8c1368b71e (runtime tokenizer only).
+diff --git a/src/llama-vocab.cpp b/src/llama-vocab.cpp
+index a81cbaedac36..473becade823 100644
+--- a/src/llama-vocab.cpp
++++ b/src/llama-vocab.cpp
+@@ -511,6 +511,14 @@ struct llm_tokenizer_bpe : llm_tokenizer {
+                 };
+                 byte_encode = false;
+                 break;
++            case LLAMA_VOCAB_PRE_TYPE_MINICPM5:
++                regex_exprs = {
++                    // original regex from tokenizer.json (openbmb/MiniCPM5-1B)
++                    "\\p{N}{1,3}",
++                    // "(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\\r\\n\\p{L}\\p{N}]?\\p{L}+|\\p{N}+| ?[^\\s\\p{L}\\p{N}]+[\\r\\n]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+"
++                    "(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])|[^\\r\\n\\p{L}\\p{N}]?\\p{L}+|\\p{N}+| ?[^\\s\\p{L}\\p{N}]+[\\r\\n]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+",
++                };
++                break;
+             default:
+                 // default regex for BPE tokenization pre-processing
+                 regex_exprs = {
+@@ -2039,6 +2047,9 @@ void llama_vocab::impl::load(llama_model_loader & ml, const LLM_KV & kv) {
+                 pre_type = LLAMA_VOCAB_PRE_TYPE_DEFAULT;
+             } else if (tokenizer_pre == "default") {
+                 pre_type = LLAMA_VOCAB_PRE_TYPE_DEFAULT;
++            } else if (tokenizer_pre == "minicpm5") {
++                pre_type = LLAMA_VOCAB_PRE_TYPE_MINICPM5;
++                ignore_merges = true;
+             } else if (
+                     tokenizer_pre == "llama3"   ||
+                     tokenizer_pre == "llama-v3" ||
+diff --git a/src/llama-vocab.h b/src/llama-vocab.h
+index 8b040b912e2f..8ab775942848 100644
+--- a/src/llama-vocab.h
++++ b/src/llama-vocab.h
+@@ -60,6 +60,7 @@ enum llama_vocab_pre_type {
+     LLAMA_VOCAB_PRE_TYPE_JAIS2           = 49,
+     LLAMA_VOCAB_PRE_TYPE_GEMMA4          = 50,
+     LLAMA_VOCAB_PRE_TYPE_SARVAM_MOE      = 51,
++    LLAMA_VOCAB_PRE_TYPE_MINICPM5        = 52,
+ };
+ 
+ struct LLM_KV;
