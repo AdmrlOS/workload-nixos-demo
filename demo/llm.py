@@ -298,15 +298,33 @@ class CudaBackend:
             self.init_error = str(e)
             self.available = False
 
+    def ensure_context(self):
+        """Binds the CUDA context to the calling thread."""
+        if not self.available or not self.ctx or not self.ctx.value:
+            raise RuntimeError("CUDA context is not initialized")
+        set_curr = self._api("cuCtxSetCurrent", [C.c_void_p])
+        res = set_curr(self.ctx)
+        if res != 0:
+            raise RuntimeError(f"cuCtxSetCurrent failed with code {res}")
+
     def alloc_device_memory(self, size_bytes):
         if not self.available:
             raise RuntimeError("Cannot allocate GPU memory: CUDA is unavailable.")
-        ptr = C.c_uint64()
-        res = self._api("cuMemAlloc_v2", [C.POINTER(C.c_uint64), C.c_size_t])(C.byref(ptr), size_bytes)
-        if res == 0:
-            self.vram_allocated_bytes += size_bytes
-            return ptr.value
-        raise RuntimeError(f"cuMemAlloc_v2 failed: code {res}")
+        with self._lock:
+            self.ensure_context()
+            ptr = C.c_uint64()
+            res = self._api("cuMemAlloc_v2", [C.POINTER(C.c_uint64), C.c_size_t])(C.byref(ptr), size_bytes)
+            if res == 0:
+                self.vram_allocated_bytes += size_bytes
+                return ptr.value
+            raise RuntimeError(f"cuMemAlloc_v2 failed: code {res}")
+
+    def free_device_memory(self, ptr_val):
+        if not self.available or not ptr_val:
+            return
+        with self._lock:
+            self.ensure_context()
+            self._api("cuMemFree_v2", [C.c_uint64])(C.c_uint64(ptr_val))
 
     def run_gemv(self, w_ptr, x_ptr, b_ptr, y_ptr, m, k):
         """Launches Qwen GEMV kernel on GPU."""
@@ -314,6 +332,7 @@ class CudaBackend:
             raise RuntimeError("Cannot launch kernel: CUDA Driver API unavailable.")
         t0 = time.monotonic()
         with self._lock:
+            self.ensure_context()
             fn = self.kernels.get("qwen_gemv")
             if not fn:
                 raise RuntimeError("qwen_gemv kernel function missing.")
@@ -355,7 +374,21 @@ class QwenEngine:
         self.total_inferences = 0
         self.last_latency_ms = 0.0
         self.last_tok_per_sec = 0.0
+        self._workspace_allocated = False
+        self._w_buf = 0
+        self._x_buf = 0
+        self._y_buf = 0
         self._knowledge_bank = self._build_knowledge_bank()
+
+    def _get_workspace_buffers(self):
+        """Allocates persistent GPU tensor buffers once across all inference threads."""
+        if not self._workspace_allocated and self.cuda.available:
+            hidden = self.HIDDEN_SIZE
+            self._w_buf = self.cuda.alloc_device_memory(hidden * hidden * 4)
+            self._x_buf = self.cuda.alloc_device_memory(hidden * 4)
+            self._y_buf = self.cuda.alloc_device_memory(hidden * 4)
+            self._workspace_allocated = True
+        return self._w_buf, self._x_buf, self._y_buf
 
     def _build_knowledge_bank(self):
         return {
@@ -422,11 +455,9 @@ class QwenEngine:
         t_start = time.monotonic()
         cuda_launches = 0
 
-        # Execute GEMV matrix multiplications on device memory
+        # Execute GEMV matrix multiplications on pre-allocated device memory
         hidden = self.HIDDEN_SIZE
-        w_buf = self.cuda.alloc_device_memory(hidden * hidden * 4)
-        x_buf = self.cuda.alloc_device_memory(hidden * 4)
-        y_buf = self.cuda.alloc_device_memory(hidden * 4)
+        w_buf, x_buf, y_buf = self._get_workspace_buffers()
 
         for _ in range(min(token_count, 20)):
             self.cuda.run_gemv(w_buf, x_buf, 0, y_buf, hidden, hidden)
